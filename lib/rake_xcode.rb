@@ -11,7 +11,7 @@ module RakeXcode
   end
 
   class Xcode
-    attr_accessor :workspace, :configuration, :target, :scheme, :arch, :sdk, :profile, :identity, :testflight, :build_dir, :version
+    attr_accessor :workspace, :configuration, :target, :scheme, :arch, :sdk, :profile, :identity, :testflight, :build_dir, :build_number, :version, :marketing_version
 
     def scheme_dir
       "#@configuration-#@sdk"
@@ -25,16 +25,6 @@ module RakeXcode
       "#@target.app"
     end
     
-    def short_version
-      vers = @version.gsub('-SNAPSHOT','').split('.')
-      "#{vers[0]}.#{vers[1]}"
-    end
-
-    def build_number
-      vers = @version.gsub('-SNAPSHOT','').split('.')
-      vers[2]
-    end
-
     def app_path
       output_path + app_file
     end
@@ -135,8 +125,8 @@ module RakeXcode
       sh "find . -name '*-Info.plist' -exec chmod a+w {} \\;"
       sh "find . -name 'project.pbxproj' -exec chmod a+w {} \\;"  
       sh "security unlock-keychain -p #{ENV['XKEYPASS']} ~/Library/Keychains/login.keychain" if ENV['XKEYPASS']
-      sh "xcrun agvtool new-marketing-version #{@xcode.short_version}"
-      sh "xcrun agvtool new-version -all #{@xcode.build_number}"
+      sh "xcrun agvtool new-marketing-version #{xcode.build_number ? xcode.build_number : xcode.version}"
+      sh "xcrun agvtool new-version -all #{xcode.marketing_version ? xcode.marketing_version : xcode.version}"
       @xcode.build(['build'])
     end
 
