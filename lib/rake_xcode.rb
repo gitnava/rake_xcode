@@ -125,8 +125,8 @@ module RakeXcode
       sh "find . -name '*-Info.plist' -exec chmod a+w {} \\;"
       sh "find . -name 'project.pbxproj' -exec chmod a+w {} \\;"  
       sh "security unlock-keychain -p #{ENV['XKEYPASS']} ~/Library/Keychains/login.keychain" if ENV['XKEYPASS']
-      sh "xcrun agvtool new-marketing-version #{@xcode.build_number ? @xcode.build_number : @xcode.version}"
-      sh "xcrun agvtool new-version -all #{@xcode.marketing_version ? @xcode.marketing_version : @xcode.version}"
+      sh "xcrun agvtool new-marketing-version  #{@xcode.marketing_version ? @xcode.marketing_version : @xcode.version}"
+      sh "xcrun agvtool new-version -all #{@xcode.build_number ? @xcode.build_number : @xcode.version}"
       @xcode.build(['build'])
     end
 
