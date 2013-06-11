@@ -1,5 +1,6 @@
 require "pathname"
 require 'rake/dsl_definition'
+require 'rake/clean'
 require 'net/http'
 require 'xmlsimple'
   
@@ -53,10 +54,15 @@ module RakeXcode
       output_path + "#{@target}-#{@version}.ipa"
     end
 
-    def build(actions)
+    def xctool(action)
       roots = "#{root_dir}/#@build_dir/#@workspace/Build/Products"
-      sh "xctool -workspace '#@workspace.xcworkspace' -configuration '#@configuration' -scheme '#@scheme' #{actions.join(' ')} SYMROOT=#{roots} OBJROOT=#{roots}"
-    end      
+      sh "xctool -workspace '#@workspace.xcworkspace' -configuration '#@configuration' -scheme '#@scheme' #{action} SYMROOT=#{roots} OBJROOT=#{roots}"
+    end
+
+    def xcbuild(action)
+      roots = "#{root_dir}/#@build_dir/#@workspace/Build/Products"
+      sh "xcodebuild -workspace '#@workspace.xcworkspace' -configuration '#@configuration' -scheme '#@scheme' #{action} SYMROOT=#{roots} OBJROOT=#{roots}"
+    end
 
     def package
       sh "xcrun -sdk #@sdk PackageApplication -v #{app_path} --sign '#@identity' --embed '#@profile' -o '#{ipa_path}'"
@@ -99,50 +105,61 @@ module RakeXcode
     raise 'Requires configuration block with xcode parameter e.g. xcode do |xc|' unless block_given?
     @xcode = Xcode.new
     yield @xcode
-    
-    desc "Downloads ruby gem build dependencies from Bundler Gemfile"
+
+    desc "Updates ruby gem build dependencies from Bundler Gemfile"
+    task ['Gemfile.lock'] => ['Gemfile'] do
+      sh "bundle update"
+    end
     task :bundle => ['Gemfile.lock']
 
-    file 'Gemfile.lock' => ['Gemfile'] do
-      sh "chmod a+w Gemfile.lock"
-      sh "bundle update"
-    end    
-
-    desc "Downloads and constructs Cocoapods dependency project"
-    task :pod => [:bundle]
-    file 'Podfile.lock'  => ['Podfile'] do
-      sh "chmod a+w #{@xcode.workspace}.xcworkspace/contents.xcworkspacedata"
-      sh "chmod -R a+w Pods" if File.exist? 'Pods'
-      sh "chmod a+w Podfile.lock"
+    desc "Updates Cocoapods dependency project"
+    task :pod => ['Podfile.lock'] do
       sh "pod update"
     end
 
-    desc "Clean build output for #{@xcode.scheme_dir}"
-    task :clean do
-      @xcode.build(['clean'])
-      sh "rm -rf #{@xcode.output_path}"
+    desc "Installs Cocoapods dependency project"
+    file 'Podfile.lock'  => [:bundle] do
+      sh "chmod a+w #{@xcode.workspace}.xcworkspace/contents.xcworkspacedata"
+      sh "pod install"
     end
 
-    desc "Build scheme #{@xcode.scheme_dir} with xctool"
-    task :build => [:pod] do
-      sh "find . -name '*-Info.plist' -exec chmod a+w {} \\;"
-      sh "find . -name 'project.pbxproj' -exec chmod a+w {} \\;"  
-      sh "security unlock-keychain -p #{ENV['XKEYPASS']} ~/Library/Keychains/login.keychain" if ENV['XKEYPASS']
-      sh "xcrun agvtool new-marketing-version  #{@xcode.marketing_version ? @xcode.marketing_version : @xcode.version}"
-      sh "xcrun agvtool new-version -all #{@xcode.build_number ? @xcode.build_number : @xcode.version}"
-      @xcode.build(['build'])
+    namespace :xcode do
+
+      desc "Clean xctool output for #{@xcode.scheme_dir}"
+      task :clean => [] do
+        #@xcode.xctool('clean')
+        @xcode.xcbuild('clean')
+      end
+
+      desc "Build scheme #{@xcode.scheme_dir} with xctool"
+      task :build => ['Podfile.lock'] do
+        sh "find . -name '*-Info.plist' -exec chmod a+w {} \\;"
+        sh "find . -name 'project.pbxproj' -exec chmod a+w {} \\;"
+        sh "security unlock-keychain -p #{ENV['XKEYPASS']} ~/Library/Keychains/login.keychain" if ENV['XKEYPASS']
+        sh "xcrun agvtool new-marketing-version  #{@xcode.marketing_version ? @xcode.marketing_version : @xcode.version}"
+        sh "xcrun agvtool new-version -all #{@xcode.build_number ? @xcode.build_number : @xcode.version}"
+        @xcode.xctool('build')
+      end
+
+      desc "Build & test scheme #{@xcode.scheme_dir} with xctool"
+      task :test => ['Podfile.lock'] do
+        sh "find . -name '*-Info.plist' -exec chmod a+w {} \\;"
+        sh "find . -name 'project.pbxproj' -exec chmod a+w {} \\;"
+        sh "security unlock-keychain -p #{ENV['XKEYPASS']} ~/Library/Keychains/login.keychain" if ENV['XKEYPASS']
+        sh "xcrun agvtool new-marketing-version  #{@xcode.marketing_version ? @xcode.marketing_version : @xcode.version}"
+        sh "xcrun agvtool new-version -all #{@xcode.build_number ? @xcode.build_number : @xcode.version}"
+        @xcode.xctool('test')
+      end
+
     end
-    
-    desc "Build & test scheme #{@xcode.scheme_dir} with xctool"
-    task :test => [:pod] do
-      sh "find . -name '*-Info.plist' -exec chmod a+w {} \\;"
-      sh "find . -name 'project.pbxproj' -exec chmod a+w {} \\;"  
-      sh "security unlock-keychain -p #{ENV['XKEYPASS']} ~/Library/Keychains/login.keychain" if ENV['XKEYPASS']
-      sh "xcrun agvtool new-marketing-version  #{@xcode.marketing_version ? @xcode.marketing_version : @xcode.version}"
-      sh "xcrun agvtool new-version -all #{@xcode.build_number ? @xcode.build_number : @xcode.version}"
-      @xcode.build(['test'])
-    end    
-    
+
+    task :build => ['xcode:build']
+
+    CLEAN.include('Podfile.lock')
+    #CLOBBER.include(@xcode.app_path)
+
+    task :clean => ['xcode:clean']
+
     desc "Generate appledoc for #{@xcode.source_dir}"
     task :appledoc do
       sh "appledoc --project-name \"#{@xcode.target}\" --project-company \"#{@xcode.organization}\"" +
@@ -159,7 +176,7 @@ module RakeXcode
 
     namespace :frank do
       desc "Build frankied app bundle"
-      task :build => [:pod] do
+      task :build => ['Podfile.lock'] do
         sh "frank build --workspace='#{@xcode.workspace}.xcworkspace' --scheme='#{@xcode.scheme}' --arch=i386"
       end
     end
