@@ -108,6 +108,7 @@ module RakeXcode
 
     desc "Updates ruby gem build dependencies from Bundler Gemfile"
     task ['Gemfile.lock'] => ['Gemfile'] do
+      sh "chmod a+w Gemfile.lock"
       sh "bundle update"
     end
     task :bundle => ['Gemfile.lock']
