@@ -178,7 +178,7 @@ module RakeXcode
     namespace :frank do
       desc "Build frankied app bundle"
       task :build => ['Podfile.lock'] do
-        sh "frank build --workspace='#{@xcode.workspace}.xcworkspace' --scheme='#{@xcode.scheme}' --arch=i386"
+        sh "frank build --workspace='#{@xcode.workspace}.xcworkspace' --scheme='#{@xcode.scheme}' --arch=armv7"
       end
     end
 
